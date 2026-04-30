@@ -1,0 +1,38 @@
+﻿# ── Terraform ─────────────────────────────────────────────────────────────────
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+*.tfvars
+!terraform/environments/*.tfvars.example
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+services/api/coverage/
+services/api/dist/
+*.log
+npm-debug.log*
+
+# ── OS / Editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+
+# ── Secrets (never commit these) ──────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+.env
+.env.*
+!.env.example
+
+# ── Helm ──────────────────────────────────────────────────────────────────────
+helm/app/charts/
+*.tgz
+
+# ── kubeconfig ────────────────────────────────────────────────────────────────
+kubeconfig
+kubeconfig.*

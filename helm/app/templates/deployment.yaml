@@ -1,0 +1,60 @@
+﻿{{- $services := list "api" "frontend" -}}
+{{- range $services -}}{{- $cfg := index $.Values . -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-%s" (include "k8s-eks-platform.fullname" $) . }}
+  namespace: {{ $.Release.Namespace }}
+  labels: {{- include "k8s-eks-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ . }}
+spec:
+  replicas: {{ $cfg.replicaCount }}
+  selector:
+    matchLabels: {{- include "k8s-eks-platform.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ . }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: {{- include "k8s-eks-platform.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ . }}
+    spec:
+      serviceAccountName: {{ $.Values.serviceAccount.name }}
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 2000 }
+      {{- if $.Values.secrets.enabled }}
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "k8s-eks-platform.fullname" $ }}-aws-secrets
+      {{- end }}
+      containers:
+        - name: {{ . }}
+          image: "{{ $cfg.image.repository }}:{{ $.Values.global.imageTag }}"
+          imagePullPolicy: {{ $cfg.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $cfg.service.port }}
+              protocol: TCP
+          env:
+            - name: APP_ENV
+              value: {{ $.Values.global.environment | quote }}
+            - name: AWS_REGION
+              value: {{ $.Values.global.awsRegion | quote }}
+          {{- if $.Values.secrets.enabled }}
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets
+              readOnly: true
+          {{- end }}
+          resources: {{- toYaml $cfg.resources | nindent 12 }}
+          livenessProbe: {{- toYaml $cfg.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml $cfg.readinessProbe | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+{{- end }}

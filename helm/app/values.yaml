@@ -1,0 +1,112 @@
+# ── Global ────────────────────────────────────────────────────────────────────
+global:
+  imageTag: latest
+  environment: dev
+  # AWS account-specific — override per environment
+  awsRegion: us-east-1
+  awsAccountId: ""
+
+# ── Service Account ───────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: app-sa
+  # Injected by Terraform output — set via --set in CI/CD
+  irsaRoleArn: ""
+
+# ── API Service ───────────────────────────────────────────────────────────────
+api:
+  name: api
+  image:
+    repository: ""   # Set via --set api.image.repository in CI/CD
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 15
+    periodSeconds: 20
+
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# ── Frontend Service ──────────────────────────────────────────────────────────
+frontend:
+  name: frontend
+  image:
+    repository: ""   # Set via --set frontend.image.repository in CI/CD
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# ── Horizontal Pod Autoscaler ─────────────────────────────────────────────────
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+  host: ""   # Set per environment, e.g. api.example.com
+
+# ── AWS Secrets Manager ───────────────────────────────────────────────────────
+secrets:
+  enabled: true
+  secretsPrefix: "/k8s-eks-platform"
+  # Secret names to mount (relative to secretsPrefix/environment/)
+  names:
+    - db-credentials
+    - api-keys

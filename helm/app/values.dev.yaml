@@ -1,0 +1,10 @@
+﻿# Dev environment overrides
+hpa:
+  minReplicas: 1
+  maxReplicas: 3
+api:
+  replicaCount: 1
+frontend:
+  replicaCount: 1
+ingress:
+  host: "dev.example.com"

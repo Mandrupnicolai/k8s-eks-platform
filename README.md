@@ -1,12 +1,12 @@
-<div align="center">
+﻿<div align="center">
 
 # ☸️ k8s-eks-platform
 
 **Production-grade Kubernetes platform for containerised microservices on AWS EKS.**
 
-[![CI](https://github.com/your-org/k8s-eks-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/k8s-eks-platform/actions/workflows/ci.yml)
-[![CD](https://github.com/your-org/k8s-eks-platform/actions/workflows/cd.yml/badge.svg)](https://github.com/your-org/k8s-eks-platform/actions/workflows/cd.yml)
-[![codecov](https://codecov.io/gh/your-org/k8s-eks-platform/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/your-org/k8s-eks-platform)
+[![CI](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml)
+[![CD](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml)
+[![codecov](https://codecov.io/gh/Mandrupnicolai/k8s-eks-platform/branch/master/graph/badge.svg)](https://codecov.io/gh/Mandrupnicolai/k8s-eks-platform)
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.7-7B42BC?logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
 [![Helm](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)](https://helm.sh)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
@@ -17,56 +17,57 @@
 
 ---
 
+
 ## Overview
 
 `k8s-eks-platform` is a fully automated, infrastructure-as-code platform that provisions an AWS EKS cluster and deploys a containerised microservices application. It demonstrates production-grade practices including:
 
-- **Zero hardcoded configuration** — all environment-specific values are injected via Helm values overlays or GitHub Actions variables/secrets
-- **Secrets at runtime** — application secrets are pulled from AWS Secrets Manager via the Secrets Store CSI Driver; no secrets exist in source control
-- **Horizontal Pod Autoscaling** — CPU and memory-based HPA keeps the platform elastic under load
-- **GitOps-style CI/CD** — every merge to `main` triggers a full Terraform plan/apply and atomic Helm release
-- **OIDC-based AWS auth** — no long-lived AWS access keys; GitHub Actions assumes an IAM role via OIDC
+- **Zero hardcoded configuration** â€” all environment-specific values are injected via Helm values overlays or GitHub Actions variables/secrets
+- **Secrets at runtime** â€” application secrets are pulled from AWS Secrets Manager via the Secrets Store CSI Driver; no secrets exist in source control
+- **Horizontal Pod Autoscaling** â€” CPU and memory-based HPA keeps the platform elastic under load
+- **GitOps-style CI/CD** â€” every merge to `main` triggers a full Terraform plan/apply and atomic Helm release
+- **OIDC-based AWS auth** â€” no long-lived AWS access keys; GitHub Actions assumes an IAM role via OIDC
 
 ---
 
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│  GitHub Actions                                                    │
-│  ┌──────────┐   PR    ┌──────────────────────────────────────┐   │
-│  │    CI    │ ──────▶ │ Lint · Test · Docker build · TF plan │   │
-│  └──────────┘         └──────────────────────────────────────┘   │
-│  ┌──────────┐  merge  ┌──────────────────────────────────────┐   │
-│  │    CD    │ ──────▶ │ ECR push · TF apply · Helm upgrade   │   │
-│  └──────────┘         └──────────────────────────────────────┘   │
-└──────────────────────────────────────┬────────────────────────────┘
-                                       │ OIDC
-                          ┌────────────▼────────────┐
-                          │         AWS              │
-                          │  ┌───────────────────┐  │
-                          │  │   ECR (images)    │  │
-                          │  └───────────────────┘  │
-                          │  ┌───────────────────┐  │
-                          │  │  EKS Cluster      │  │
-                          │  │  ┌─────────────┐  │  │
-                          │  │  │  Namespace  │  │  │
-                          │  │  │  app        │  │  │
-                          │  │  │  ┌───────┐  │  │  │
-                          │  │  │  │  API  │  │  │  │
-                          │  │  │  │  HPA  │  │  │  │
-                          │  │  │  └───────┘  │  │  │
-                          │  │  │  ┌────────┐ │  │  │
-                          │  │  │  │  Web   │ │  │  │
-                          │  │  │  │  HPA   │ │  │  │
-                          │  │  │  └────────┘ │  │  │
-                          │  │  └─────────────┘  │  │
-                          │  │  ┌───────────────┐ │  │
-                          │  │  │ Secrets Mgr   │ │  │
-                          │  │  │ (CSI Driver)  │ │  │
-                          │  │  └───────────────┘ │  │
-                          │  └───────────────────┘  │
-                          └─────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  GitHub Actions                                                    â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   PR    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+â”‚  â”‚    CI    â”‚ â”€â”€â”€â”€â”€â”€â–¶ â”‚ Lint Â· Test Â· Docker build Â· TF plan â”‚   â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  merge  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+â”‚  â”‚    CD    â”‚ â”€â”€â”€â”€â”€â”€â–¶ â”‚ ECR push Â· TF apply Â· Helm upgrade   â”‚   â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                       â”‚ OIDC
+                          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                          â”‚         AWS              â”‚
+                          â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+                          â”‚  â”‚   ECR (images)    â”‚  â”‚
+                          â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+                          â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+                          â”‚  â”‚  EKS Cluster      â”‚  â”‚
+                          â”‚  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚  â”‚
+                          â”‚  â”‚  â”‚  Namespace  â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  app        â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”  â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”‚  API  â”‚  â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”‚  HPA  â”‚  â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â” â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”‚  Web   â”‚ â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â”‚  HPA   â”‚ â”‚  â”‚  â”‚
+                          â”‚  â”‚  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚  â”‚  â”‚
+                          â”‚  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚  â”‚
+                          â”‚  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚  â”‚
+                          â”‚  â”‚  â”‚ Secrets Mgr   â”‚ â”‚  â”‚
+                          â”‚  â”‚  â”‚ (CSI Driver)  â”‚ â”‚  â”‚
+                          â”‚  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚  â”‚
+                          â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+                          â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -75,42 +76,42 @@
 
 ```
 k8s-eks-platform/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml              # Lint, test, Docker build, TF validate
-│       └── cd.yml              # ECR push, Terraform apply, Helm deploy
-├── terraform/
-│   ├── main.tf                 # VPC, EKS, IRSA, Cluster Autoscaler
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── providers.tf
-├── helm/
-│   └── app/
-│       ├── Chart.yaml
-│       ├── values.yaml         # Default values (no env-specific secrets)
-│       └── templates/
-│           ├── deployment.yaml
-│           ├── service.yaml
-│           ├── hpa.yaml
-│           ├── ingress.yaml
-│           ├── serviceaccount.yaml
-│           └── secretproviderclass.yaml
-├── services/
-│   ├── api/                    # Node.js REST API
-│   │   ├── Dockerfile
-│   │   ├── src/
-│   │   └── tests/
-│   └── frontend/               # Nginx static frontend
-│       ├── Dockerfile
-│       ├── nginx.conf
-│       └── html/
-├── scripts/
-│   ├── bootstrap.ps1           # First-time cluster bootstrap
-│   ├── deploy.ps1              # Manual Helm deploy helper
-│   └── teardown.ps1            # Full infra teardown
-├── CONTRIBUTING.md
-├── LICENSE
-└── README.md
+â”œâ”€â”€ .github/
+â”‚   â””â”€â”€ workflows/
+â”‚       â”œâ”€â”€ ci.yml              # Lint, test, Docker build, TF validate
+â”‚       â””â”€â”€ cd.yml              # ECR push, Terraform apply, Helm deploy
+â”œâ”€â”€ terraform/
+â”‚   â”œâ”€â”€ main.tf                 # VPC, EKS, IRSA, Cluster Autoscaler
+â”‚   â”œâ”€â”€ variables.tf
+â”‚   â”œâ”€â”€ outputs.tf
+â”‚   â””â”€â”€ providers.tf
+â”œâ”€â”€ helm/
+â”‚   â””â”€â”€ app/
+â”‚       â”œâ”€â”€ Chart.yaml
+â”‚       â”œâ”€â”€ values.yaml         # Default values (no env-specific secrets)
+â”‚       â””â”€â”€ templates/
+â”‚           â”œâ”€â”€ deployment.yaml
+â”‚           â”œâ”€â”€ service.yaml
+â”‚           â”œâ”€â”€ hpa.yaml
+â”‚           â”œâ”€â”€ ingress.yaml
+â”‚           â”œâ”€â”€ serviceaccount.yaml
+â”‚           â””â”€â”€ secretproviderclass.yaml
+â”œâ”€â”€ services/
+â”‚   â”œâ”€â”€ api/                    # Node.js REST API
+â”‚   â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â””â”€â”€ tests/
+â”‚   â””â”€â”€ frontend/               # Nginx static frontend
+â”‚       â”œâ”€â”€ Dockerfile
+â”‚       â”œâ”€â”€ nginx.conf
+â”‚       â””â”€â”€ html/
+â”œâ”€â”€ scripts/
+â”‚   â”œâ”€â”€ bootstrap.ps1           # First-time cluster bootstrap
+â”‚   â”œâ”€â”€ deploy.ps1              # Manual Helm deploy helper
+â”‚   â””â”€â”€ teardown.ps1            # Full infra teardown
+â”œâ”€â”€ CONTRIBUTING.md
+â”œâ”€â”€ LICENSE
+â””â”€â”€ README.md
 ```
 
 ---
@@ -119,18 +120,18 @@ k8s-eks-platform/
 
 | Tool        | Version  | Install |
 |-------------|----------|---------|
-| AWS CLI     | ≥ 2.15   | [docs](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
-| Terraform   | ≥ 1.7    | [docs](https://developer.hashicorp.com/terraform/install) |
-| kubectl     | ≥ 1.29   | [docs](https://kubernetes.io/docs/tasks/tools/) |
-| Helm        | ≥ 3.15   | [docs](https://helm.sh/docs/intro/install/) |
-| PowerShell  | ≥ 7.0    | [docs](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell) |
-| Node.js     | ≥ 20 LTS | [docs](https://nodejs.org/) |
+| AWS CLI     | â‰¥ 2.15   | [docs](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) |
+| Terraform   | â‰¥ 1.7    | [docs](https://developer.hashicorp.com/terraform/install) |
+| kubectl     | â‰¥ 1.29   | [docs](https://kubernetes.io/docs/tasks/tools/) |
+| Helm        | â‰¥ 3.15   | [docs](https://helm.sh/docs/intro/install/) |
+| PowerShell  | â‰¥ 7.0    | [docs](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell) |
+| Node.js     | â‰¥ 20 LTS | [docs](https://nodejs.org/) |
 
 ---
 
 ## Quick Start
 
-### 1 · Configure AWS & Terraform state
+### 1 Â· Configure AWS & Terraform state
 
 Create the S3 bucket and DynamoDB table for Terraform state:
 
@@ -144,7 +145,7 @@ aws dynamodb create-table \
   --region us-east-1
 ```
 
-### 2 · Provision the cluster
+### 2 Â· Provision the cluster
 
 ```powershell
 cd terraform
@@ -157,13 +158,13 @@ terraform init `
 terraform apply -var-file="environments/dev.tfvars"
 ```
 
-### 3 · Bootstrap cluster add-ons
+### 3 Â· Bootstrap cluster add-ons
 
 ```powershell
 ./scripts/bootstrap.ps1 -ClusterName my-eks-cluster -AwsRegion us-east-1
 ```
 
-### 4 · Deploy the application
+### 4 Â· Deploy the application
 
 ```powershell
 ./scripts/deploy.ps1 `
@@ -270,4 +271,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, 
 
 ## License
 
-[MIT](LICENSE) © your-org
+[MIT](LICENSE) Â© your-org
+
+

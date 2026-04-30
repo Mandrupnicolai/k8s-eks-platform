@@ -4,9 +4,9 @@
 
 **Production-grade Kubernetes platform for containerised microservices on AWS EKS.**
 
-[![CI](https://github.com/your-org/k8s-eks-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/k8s-eks-platform/actions/workflows/ci.yml)
-[![CD](https://github.com/your-org/k8s-eks-platform/actions/workflows/cd.yml/badge.svg)](https://github.com/your-org/k8s-eks-platform/actions/workflows/cd.yml)
-[![codecov](https://codecov.io/gh/your-org/k8s-eks-platform/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/your-org/k8s-eks-platform)
+[![CI](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml)
+[![CD](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml)
+[![codecov](https://codecov.io/gh/Mandrupnicolai/k8s-eks-platform/branch/main/graph/badge.svg?token=b0875c88-2f34-40f4-8c22-a6f1bfddb4b0)](https://codecov.io/gh/Mandrupnicolai/k8s-eks-platform)
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.7-7B42BC?logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
 [![Helm](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)](https://helm.sh)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)

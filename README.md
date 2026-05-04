@@ -1,8 +1,6 @@
-<div align="center">
-
 # k8s-eks-platform
 
-**Production-grade Kubernetes platform for containerised microservices on AWS EKS.**
+> A production-grade Kubernetes platform for containerised microservices on AWS EKS — built to demonstrate infrastructure-as-code, GitOps CI/CD, secrets management, and auto-scaling best practices.
 
 [![CI](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/ci.yml)
 [![CD](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml/badge.svg)](https://github.com/Mandrupnicolai/k8s-eks-platform/actions/workflows/cd.yml)
@@ -11,120 +9,65 @@
 [![Helm](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)](https://helm.sh)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
 [![AWS EKS](https://img.shields.io/badge/AWS-EKS-FF9900?logo=amazonaws&logoColor=white)](https://aws.amazon.com/eks/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
-
-</div>
+[![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/Mandrupnicolai/k8s-eks-platform)](https://github.com/Mandrupnicolai/k8s-eks-platform/commits/master)
+[![Open Issues](https://img.shields.io/github/issues/Mandrupnicolai/k8s-eks-platform)](https://github.com/Mandrupnicolai/k8s-eks-platform/issues)
 
 ---
 
-## Overview
+## Contents
 
-`k8s-eks-platform` is a fully automated, infrastructure-as-code platform that provisions an AWS EKS cluster and deploys a containerised microservices application. It demonstrates production-grade practices including:
+- [Features](#features)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Kubernetes & Helm deployment](#kubernetes--helm-deployment)
+- [CI/CD pipeline](#cicd-pipeline)
+- [API reference](#api-reference)
+- [Contributing](#contributing)
 
-- **Zero hardcoded configuration** - all environment-specific values are injected via Helm values overlays or GitHub Actions variables/secrets
-- **Secrets at runtime** - application secrets are pulled from AWS Secrets Manager via the Secrets Store CSI Driver; no secrets exist in source control
-- **Horizontal Pod Autoscaling** - CPU and memory-based HPA keeps the platform elastic under load
-- **GitOps-style CI/CD** - every merge to `master` triggers a full Terraform plan/apply and atomic Helm release
-- **OIDC-based AWS auth** - no long-lived AWS access keys; GitHub Actions assumes an IAM role via OIDC
+---
+
+## Features
+
+- **Containerised microservices** — Node.js REST API and Nginx frontend, each independently deployable
+- **AWS EKS via Terraform** — fully automated cluster provisioning with VPC, managed node groups, and IRSA
+- **Helm chart** — fully parameterised across dev / staging / prod, no hardcoded values anywhere
+- **Horizontal Pod Autoscaler** — CPU and memory-based scaling from 1 to 10 replicas per service
+- **AWS Secrets Manager** — secrets mounted at runtime via Secrets Store CSI Driver, never in source control
+- **GitHub Actions CI/CD** — lint, test, Docker build, Terraform validate, ECR push, Helm upgrade
+- **OIDC-based AWS auth** — no static credentials; GitHub Actions assumes an IAM role via OIDC
+- **Jest** unit tests with Codecov coverage reporting
 
 ---
 
 ## Architecture
 
-```
-+------------------------------------------------------------------+
-|  GitHub Actions                                                  |
-|  +----------+   PR    +--------------------------------------+   |
-|  |    CI    | ------> | Lint - Test - Docker build - TF plan|   |
-|  +----------+         +--------------------------------------+   |
-|  +----------+  merge  +--------------------------------------+   |
-|  |    CD    | ------> | ECR push - TF apply - Helm upgrade  |   |
-|  +----------+         +--------------------------------------+   |
-+------------------------------------+-----------------------------+
-                                     | OIDC
-                        +------------v------------+
-                        |          AWS            |
-                        |  +-------------------+  |
-                        |  |   ECR (images)    |  |
-                        |  +-------------------+  |
-                        |  +-------------------+  |
-                        |  |   EKS Cluster     |  |
-                        |  |  +-------------+  |  |
-                        |  |  | Namespace   |  |  |
-                        |  |  |    app      |  |  |
-                        |  |  |  API + HPA  |  |  |
-                        |  |  |  Web + HPA  |  |  |
-                        |  |  +-------------+  |  |
-                        |  |  +-------------+  |  |
-                        |  |  | Secrets Mgr |  |  |
-                        |  |  | (CSI Driver)|  |  |
-                        |  |  +-------------+  |  |
-                        |  +-------------------+  |
-                        +-------------------------+
+```mermaid
+flowchart TD
+    Client([Client])
+    ALB[AWS ALB Ingress]
+    Frontend["Nginx Frontend\n/ :80"]
+    API["Node.js API\n/api/v1 :3000"]
+    SecretsCSI["Secrets Store\nCSI Driver"]
+    ASM[("AWS Secrets\nManager")]
+    ECR["Amazon ECR\nContainer Registry"]
+    EKS["EKS Cluster\nManaged Node Group"]
+
+    Client -->|HTTPS| ALB
+    ALB -->|/| Frontend
+    ALB -->|/api| API
+    API --> SecretsCSI
+    SecretsCSI --> ASM
+    ECR -->|pull images| EKS
 ```
 
 ---
 
-## Repository Structure
+## Getting started
 
-```
-k8s-eks-platform/
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml                   # Lint, test, Docker build, TF validate
-│   │   └── cd.yml                   # ECR push, Terraform apply, Helm deploy
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md
-│   │   └── feature_request.md
-│   ├── PULL_REQUEST_TEMPLATE.md
-│   └── dependabot.yml
-├── terraform/
-│   ├── main.tf                      # VPC, EKS, IRSA, Cluster Autoscaler
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── providers.tf
-│   └── environments/
-│       └── dev.tfvars.example
-├── helm/
-│   └── app/
-│       ├── Chart.yaml
-│       ├── values.yaml              # Base defaults
-│       ├── values.dev.yaml
-│       ├── values.staging.yaml
-│       ├── values.prod.yaml
-│       └── templates/
-│           ├── deployment.yaml
-│           ├── service.yaml
-│           ├── hpa.yaml
-│           ├── ingress.yaml
-│           ├── serviceaccount.yaml
-│           └── secretproviderclass.yaml
-├── services/
-│   ├── api/                         # Node.js REST API
-│   │   ├── Dockerfile
-│   │   ├── .dockerignore
-│   │   ├── package.json
-│   │   ├── src/
-│   │   └── tests/
-│   └── frontend/                    # Nginx static frontend
-│       ├── Dockerfile
-│       ├── .dockerignore
-│       ├── nginx.conf
-│       └── html/
-├── scripts/
-│   ├── bootstrap.ps1                # First-time cluster bootstrap
-│   ├── deploy.ps1                   # Manual Helm deploy helper
-│   └── teardown.ps1                 # Full infra teardown
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── LICENSE
-└── README.md
-```
-
----
-
-## Prerequisites
+### Prerequisites
 
 | Tool       | Version  | Install |
 |------------|----------|---------|
@@ -135,42 +78,63 @@ k8s-eks-platform/
 | PowerShell | >= 7.0   | [docs](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell) |
 | Node.js    | >= 20    | [docs](https://nodejs.org/) |
 
----
-
-## Quick Start
-
-### 1 - Configure AWS and Terraform state
+### Run the API locally
 
 ```bash
-aws s3 mb s3://your-tf-state-bucket --region us-east-1
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
+cd services/api
+npm install
+npm start
+curl http://localhost:3000/health
 ```
 
-### 2 - Provision the cluster
+### Run tests
+
+```bash
+cd services/api
+npm test
+```
+
+---
+
+## Configuration
+
+All configuration is supplied via environment variables or Helm values — nothing is hardcoded.
+
+| Variable      | Default       | Description                        |
+|---------------|---------------|------------------------------------|
+| `PORT`        | `3000`        | API HTTP port                      |
+| `APP_ENV`     | `development` | Runtime environment label          |
+| `AWS_REGION`  | `us-east-1`   | AWS region for SDK calls           |
+
+In Kubernetes, non-sensitive values come from Helm values and the sensitive values (database credentials, API keys) are mounted from AWS Secrets Manager into `/mnt/secrets/` via the Secrets Store CSI Driver.
+
+Secret path convention: `/k8s-eks-platform/{environment}/{secret-name}`
+
+---
+
+## Kubernetes & Helm deployment
+
+> **Note:** The deploy stage in CI requires AWS secrets and variables to be configured in GitHub.
+> The CD job includes a preflight check and skips gracefully when credentials are absent.
+> See [Enabling deployment](#enabling-deployment) below to activate it.
+
+### Bootstrap the cluster (first time only)
 
 ```powershell
+# 1. Provision infrastructure
 cd terraform
 terraform init `
   -backend-config="bucket=your-tf-state-bucket" `
   -backend-config="key=k8s-eks-platform/terraform.tfstate" `
   -backend-config="region=us-east-1" `
   -backend-config="dynamodb_table=terraform-state-lock"
-
 terraform apply -var-file="environments/dev.tfvars"
-```
 
-### 3 - Bootstrap cluster add-ons
-
-```powershell
+# 2. Install cluster add-ons
 ./scripts/bootstrap.ps1 -ClusterName my-eks-cluster -AwsRegion us-east-1
 ```
 
-### 4 - Deploy the application
+### Deploy the application
 
 ```powershell
 ./scripts/deploy.ps1 `
@@ -180,21 +144,24 @@ terraform apply -var-file="environments/dev.tfvars"
   -ImageTag    latest
 ```
 
----
+### Enabling deployment in CI/CD
 
-## GitHub Actions Setup
+1. Provision an EKS cluster using the Terraform module in `/terraform`
+2. Create an ECR repository for each service (`api`, `frontend`)
+3. Set up an IAM role with OIDC trust for GitHub Actions (see OIDC trust policy below)
+4. Add the following GitHub Actions secrets and variables:
 
-### Required Secrets
+**Secrets:**
 
 | Secret                | Description |
 |-----------------------|-------------|
-| `AWS_DEPLOY_ROLE_ARN` | IAM role ARN assumed via OIDC during CI/CD |
+| `AWS_DEPLOY_ROLE_ARN` | IAM role ARN assumed via OIDC |
 | `TF_STATE_BUCKET`     | S3 bucket for Terraform state |
 | `TF_STATE_LOCK_TABLE` | DynamoDB table for state locking |
-| `IRSA_ROLE_ARN`       | IAM role ARN for pod-level Secrets Manager access |
+| `IRSA_ROLE_ARN`       | IAM role for pod-level Secrets Manager access |
 | `CODECOV_TOKEN`       | Token from [codecov.io](https://codecov.io) |
 
-### Required Variables
+**Variables:**
 
 | Variable           | Example |
 |--------------------|---------|
@@ -203,9 +170,7 @@ terraform apply -var-file="environments/dev.tfvars"
 | `EKS_CLUSTER_NAME` | `my-eks-cluster` |
 | `APP_HOST`         | `api.example.com` |
 
-### OIDC Trust Policy
-
-Add this to your IAM role trust policy to allow GitHub Actions OIDC authentication:
+**OIDC trust policy** — add to your IAM role:
 
 ```json
 {
@@ -225,58 +190,47 @@ Add this to your IAM role trust policy to allow GitHub Actions OIDC authenticati
 }
 ```
 
----
-
-## Secrets Management
-
-Secrets are never stored in source control or container images. At pod startup the Secrets Store CSI Driver mounts secrets from AWS Secrets Manager into `/mnt/secrets/`.
-
-Secret path convention: `/k8s-eks-platform/{environment}/{secret-name}`
-
-Example: `/k8s-eks-platform/prod/db-credentials`
-
----
-
-## Horizontal Pod Autoscaling
-
-| Parameter         | Dev  | Staging | Prod |
-|-------------------|------|---------|------|
-| Min replicas      | 1    | 2       | 3    |
-| Max replicas      | 3    | 6       | 10   |
-| CPU target        | 70%  | 70%     | 70%  |
-| Memory target     | 80%  | 80%     | 80%  |
-| Scale-down window | 300s | 300s    | 300s |
-
----
-
-## Teardown
+### Teardown
 
 ```powershell
 ./scripts/teardown.ps1 -ClusterName my-eks-cluster -AwsRegion us-east-1
 ```
 
-> **Warning:** This is irreversible. The script requires typing the cluster name to confirm.
+> **Warning:** This is irreversible and destroys all AWS resources. The script requires typing the cluster name to confirm.
+
+---
+
+## CI/CD pipeline
+
+| Stage              | Trigger              | Action                                                        |
+|--------------------|----------------------|---------------------------------------------------------------|
+| **Lint**           | Every push / PR      | YAML lint, Helm lint, PSScriptAnalyzer, Terraform fmt         |
+| **Test**           | Every push / PR      | Jest unit tests, Codecov coverage upload                      |
+| **Docker build**   | Every push / PR      | Build API and Frontend images, no push                        |
+| **TF validate**    | Every push / PR      | `terraform validate` + format check                           |
+| **ECR push**       | Push to `master`     | Multi-tag image push to Amazon ECR                            |
+| **TF apply**       | Push to `master`     | Terraform plan + apply against target environment             |
+| **Helm deploy**    | Push to `master`     | Atomic `helm upgrade --install` with post-deploy smoke test   |
+| **Deploy**         | Requires AWS secrets | Skipped with warning when credentials are not configured      |
+
+---
+
+## API reference
+
+| Method   | Path                  | Description          |
+|----------|-----------------------|----------------------|
+| `GET`    | `/health`             | Liveness probe       |
+| `GET`    | `/ready`              | Readiness probe      |
+| `GET`    | `/api/v1/items`       | List all items       |
+| `GET`    | `/api/v1/items/{id}`  | Get item by ID       |
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, and PR guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+Please open an issue before submitting a large pull request.
 
 ---
 
-## Security
-
-See [SECURITY.md](SECURITY.md) for the responsible disclosure policy.
-
----
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for release history.
-
----
-
-## License
-
-[MIT](LICENSE) (c) Mandrupnicolai
+*MIT License — see [LICENSE](LICENSE)*

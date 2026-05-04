@@ -1,0 +1,17 @@
+﻿# Production overrides
+hpa:
+  minReplicas: 3
+  maxReplicas: 10
+api:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+frontend:
+  replicaCount: 3
+ingress:
+  host: api.example.com

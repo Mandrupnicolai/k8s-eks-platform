@@ -1,147 +1,47 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [main, develop]
   push:
-    branches: [develop]
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  NODE_VERSION: "20"
-  AWS_REGION: ${{ vars.AWS_REGION }}
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  # ── Lint ──────────────────────────────────────────────────────────────────
-  lint:
-    name: Lint
+  test:
+    name: Lint, Type Check & Test
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Lint YAML files
-        uses: ibiqlik/action-yamllint@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          config_data: |
-            extends: default
-            rules:
-              line-length: { max: 120 }
-              truthy: disable
-
-      - name: Lint Helm chart
-        uses: azure/setup-helm@v4
-      
-      - run: helm lint helm/app --strict
-
-      - name: Lint PowerShell scripts
-        uses: devblackops/github-action-psscriptanalyzer@v1
-        with:
-          rootPath: scripts/
-          failOnErrors: true
-          failOnWarnings: false
-
-  # ── Unit tests & coverage ─────────────────────────────────────────────────
-  test-api:
-    name: API Unit Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/api
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: services/api/package-lock.json
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy pytest pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Type check with mypy
+        run: mypy scanner.py server.py --ignore-missing-imports
 
       - name: Run tests with coverage
-        run: npm test
+        run: |
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: services/api/coverage
-          flags: api
-          fail_ci_if_error: true
-
-  # ── Docker build (dry-run, no push on PRs) ────────────────────────────────
-  docker-build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [api, frontend]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build ${{ matrix.service }} image (no push)
-        uses: docker/build-push-action@v5
-        with:
-          context: services/${{ matrix.service }}
-          push: false
-          tags: k8s-eks-platform/${{ matrix.service }}:ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ── Terraform validate ────────────────────────────────────────────────────
-  terraform-validate:
-    name: Terraform Validate
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: terraform
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.7"
-
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Init (local backend for validation only)
-        run: terraform init -backend=false
-
-      - name: Terraform Validate
-        run: terraform validate
-
-  # ── Helm template smoke ───────────────────────────────────────────────────
-  helm-template:
-    name: Helm Template Render
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Render Helm templates
-        run: |
-          helm template k8s-eks-platform helm/app \
-            --set global.imageTag=ci-test \
-            --set global.environment=dev \
-            --set serviceAccount.irsaRoleArn=arn:aws:iam::123456789012:role/test \
-            --set api.image.repository=test/api \
-            --set frontend.image.repository=test/frontend \
-            --set ingress.host=test.example.com \
-            --debug > /dev/null
+          files: ./coverage.xml
+          fail_ci_if_error: false

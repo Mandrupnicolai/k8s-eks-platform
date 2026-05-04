@@ -1,4 +1,5 @@
-name: CD
+﻿name: CD
+
 on:
   push:
     branches: [master]
@@ -13,40 +14,56 @@ on:
       image_tag:
         description: "Image tag to deploy (leave blank to use commit SHA)"
         required: false
+
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
-env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
-  CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-  IMAGE_TAG: ${{ github.event.inputs.image_tag || github.sha }}
-  ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+
 permissions:
   id-token: write
   contents: read
+
 jobs:
-  build-push:
-    name: Build & Push � ${{ matrix.service }}
+  preflight:
+    name: Preflight — Check secrets are configured
     runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Check required secrets exist
+        id: check
+        run: |
+          if [[ -z "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" || -z "${{ vars.AWS_REGION }}" || -z "${{ vars.ECR_REGISTRY }}" ]]; then
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::CD skipped — AWS secrets/variables not configured. See README for setup instructions."
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-push:
+    name: Build & Push — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
     strategy:
       matrix:
         service: [api, frontend]
-    outputs:
-      api_image: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -54,64 +71,112 @@ jobs:
           images: ${{ vars.ECR_REGISTRY }}/k8s-eks-platform/${{ matrix.service }}
           tags: |
             type=sha,prefix=,format=short
-            type=raw,value=${{ github.event.inputs.image_tag || github.sha }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: services/${{ matrix.service }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  terraform:
+  terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    needs: build-push
+    needs: [preflight, build-push]
+    if: needs.preflight.outputs.ready == 'true'
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    defaults:
+      run:
+        working-directory: terraform
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~> 1.7"
+          terraform_version: "~1.7"
+
       - name: Terraform Init
-        working-directory: terraform
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=k8s-eks-platform/terraform.tfstate" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
             -backend-config="dynamodb_table=${{ secrets.TF_STATE_LOCK_TABLE }}"
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            -var="environment=${{ github.event.inputs.environment || 'staging' }}" \
+            -var="cluster_name=${{ vars.EKS_CLUSTER_NAME }}" \
+            -var="tf_state_bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -var="tf_state_lock_table=${{ secrets.TF_STATE_LOCK_TABLE }}" \
+            -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars" \
+            -out=tfplan -no-color
+
       - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars"
+        run: terraform apply -auto-approve tfplan
 
   helm-deploy:
     name: Helm Deploy
     runs-on: ubuntu-latest
-    needs: terraform
+    needs: [preflight, terraform-apply]
+    if: needs.preflight.outputs.ready == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}
-      - name: Helm upgrade
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm upgrade / install
         run: |
-          helm upgrade --install app helm/app \
-            --namespace app --create-namespace \
-            --set image.tag=${{ github.event.inputs.image_tag || github.sha }} \
-            --set ingress.host=${{ vars.APP_HOST }} \
-            --set serviceAccount.roleArn=${{ secrets.IRSA_ROLE_ARN }} \
+          helm upgrade --install k8s-eks-platform helm/app \
+            --namespace app \
+            --create-namespace \
+            --values helm/app/values.yaml \
             --values helm/app/values.${{ github.event.inputs.environment || 'staging' }}.yaml \
-            --atomic --timeout 5m
+            --set global.imageTag=${{ github.sha }} \
+            --set global.environment=${{ github.event.inputs.environment || 'staging' }} \
+            --set global.awsRegion=${{ vars.AWS_REGION }} \
+            --set api.image.repository=${{ vars.ECR_REGISTRY }}/k8s-eks-platform/api \
+            --set frontend.image.repository=${{ vars.ECR_REGISTRY }}/k8s-eks-platform/frontend \
+            --set serviceAccount.irsaRoleArn=${{ secrets.IRSA_ROLE_ARN }} \
+            --set ingress.host=${{ vars.APP_HOST }} \
+            --atomic --cleanup-on-fail --timeout 5m --wait
+
+      - name: Post-deploy smoke test
+        run: |
+          kubectl rollout status deployment -n app --timeout=3m
+          echo "All deployments rolled out successfully"
+
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [build-push, terraform-apply, helm-deploy]
+    if: failure()
+    steps:
+      - name: Post failure summary
+        run: |
+          echo "::error::CD pipeline failed (SHA: ${{ github.sha }})"

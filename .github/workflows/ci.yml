@@ -2,46 +2,117 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, main, develop]
   pull_request:
-    branches: [main]
+    branches: [master, main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Lint, Type Check & Test
+
+  lint-yaml:
+    name: Lint YAML
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: ibiqlik/action-yamllint@v3
         with:
-          python-version: ${{ matrix.python-version }}
+          config_data: |
+            extends: default
+            rules:
+              line-length: {max: 120}
+              truthy: disable
 
+  lint-helm:
+    name: Lint Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Helm lint
+        run: helm lint helm/app --strict
+
+  lint-terraform:
+    name: Lint Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+      - name: Terraform init (local backend)
+        run: terraform init -backend=false
+        working-directory: terraform
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: terraform
+
+  test-api:
+    name: API Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: services/api/package-lock.json
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy pytest pytest-cov
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Lint with ruff
-        run: ruff check .
-
-      - name: Type check with mypy
-        run: mypy scanner.py server.py --ignore-missing-imports
-
+        run: npm ci
       - name: Run tests with coverage
-        run: |
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
-
+        run: npm test
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: services/api/coverage
+          flags: api
           fail_ci_if_error: false
+
+  docker-build:
+    name: Docker Build — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v5
+        with:
+          context: services/${{ matrix.service }}
+          push: false
+          tags: k8s-eks-platform/${{ matrix.service }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  helm-render:
+    name: Helm Template Render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Render all environment overlays
+        run: |
+          for env in dev staging prod; do
+            echo "--- Rendering: $env ---"
+            helm template k8s-eks-platform helm/app \
+              --values helm/app/values.yaml \
+              --values helm/app/values.${env}.yaml \
+              --set global.imageTag=ci-test \
+              --set global.environment=${env} \
+              --set global.awsRegion=us-east-1 \
+              --set serviceAccount.irsaRoleArn=arn:aws:iam::123456789012:role/test \
+              --set api.image.repository=test/api \
+              --set frontend.image.repository=test/frontend \
+              --set ingress.host=test.example.com > /dev/null
+          done
